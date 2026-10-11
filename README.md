@@ -1,128 +1,121 @@
-# prompt-terminal
+# never-rm-rf
 
-> **AI Terminal Co-Pilot Rules for SREs and DevOps Engineers**  
-> A set of prompt-engineering rules that turn your AI coding assistant into a safe, human-in-the-loop terminal co-pilot — no blind command execution, no accidental production disasters.
+> **Because your AI shouldn't `rm -rf` your career.**
 
----
-
-## Why this exists
-
-AI agents connected to a shell are powerful — and dangerous. Without guardrails, an AI can silently run a `DROP TABLE`, delete a directory, or leak secrets to a chat window. This repository defines a minimal, opinionated ruleset that changes that behaviour:
-
-- Every command is shown to the engineer **before** it runs.
-- Destructive commands are **never** executed automatically — not even if you say "yes".
-- Production environments get an extra layer: **every** command, including read-only ones, requires explicit one-by-one approval.
-- Sensitive output (env vars, tokens, logs) is surfaced intentionally, not accidentally.
-
-The rules are plain Markdown files that you drop into your project. No code, no dependencies.
+A minimal set of Markdown rules that turns your AI coding assistant into a safe, human-approved terminal co-pilot. No blind execution. No production disasters. No 3 AM post-mortems.
 
 ---
 
-## Who it is for
+## The problem
 
-| Role | How it helps |
-|------|-------------|
-| **SRE** | Safely query Kubernetes, read logs, tail metrics — in production — without fear of a fat-finger incident. |
-| **DevOps engineer** | Run deployment pipelines, Docker operations, and git workflows through AI assistance with a full human approval gate. |
-| **Platform engineer** | Enforce a consistent "confirm before run" culture across the team when pairing with AI agents on infra work. |
+You gave your AI access to the shell.
 
----
-
-## How it works
-
-### 1 · Session isolation via tmux
-
-On every new conversation the agent creates a **fresh, uniquely-named tmux session** (`work-MMDD-HHMMSS`). All commands run inside that session. Sessions are never reused across conversations, which prevents context bleed between unrelated tasks.
-
-```
-SESSION="work-$(date +%m%d-%H%M%S)"
-tmux new-session -d -s "$SESSION"
-# → e.g. work-1011-143000
-```
-
-The agent never attaches to tmux itself. You attach in your own terminal:
+It is very helpful.  
+It is also one hallucination away from:
 
 ```bash
-tmux attach -t work-1011-143000
+rm -rf /var/lib/postgresql/data
+docker system prune -af
+git reset --hard HEAD~50
+DROP TABLE users;
 ```
 
-### 2 · Environment selection
+This repo exists so that never happens.
 
-At the start of every conversation you pick the operating context:
+---
+
+## What it does
+
+**Every command gets shown to you before it runs.**  
+You click yes or no.  
+That's it.
+
+And a small list of commands — `rm`, `drop`, `truncate`, `git reset --hard`, and friends — **can never be run by the AI at all**, even if you say please.
+
+---
+
+## Two modes. Pick one at the start of every session.
 
 | Mode | Behaviour |
 |------|-----------|
-| **main** | Read-only commands on the whitelist run without confirmation. Everything else needs one approval. |
-| **production** | The whitelist is disabled. **Every** command — `ls`, `cat`, `git status`, everything — requires its own explicit approval before the agent touches the shell. |
+| **main** | Read-only commands (`ls`, `cat`, `git status` …) run freely. Everything else needs your approval. |
+| **production** | Nothing runs without your explicit approval. Not even `ls`. Every command. One by one. |
 
-If you never answer, the agent defaults to **production** (the stricter mode).
+If you forget to pick, it defaults to **production**. Because that's the safer assumption.
 
-### 3 · Command display + 1-click approval
+---
 
-Before any command runs, the agent:
+## The permanently banned list
 
-1. Prints the **exact command** in a syntax-highlighted code block in chat.
-2. Shows an interactive confirmation prompt with **بله، اجرا شود** / **خیر، اجرا نشود** options (single click, no typing required).
-3. In production mode, adds a one-line Persian explanation of what the command does and why.
-
-Approval of one command **never** covers the next one.
-
-### 4 · Absolute ban on destructive commands
-
-The following commands are **hardcoded off** — the agent will refuse to run them under any circumstances, even with explicit user approval:
+The AI will never execute these. Not if you ask nicely. Not if you insist. Not ever.
 
 ```
 rm  rmdir  shred  dd  mkfs
 chmod -R  chown -R
 git reset --hard  git clean  git push --force
 docker system prune  docker rm  docker volume rm
-DROP  TRUNCATE  DELETE FROM   (SQL)
+DROP  TRUNCATE  DELETE FROM
 kill -9  pkill  shutdown  reboot
 ```
 
-This also covers these commands when they appear **inside** pipes, `&&`, `;`, `xargs`, `sudo`, `bash -c`, or shell scripts.
-
-If a destructive operation is genuinely needed, the agent:
-1. Reminds you to take a backup first and provides the exact backup command.
-2. Explains the risk in plain language.
-3. Hands you the command to run **yourself** — it never executes it.
-
-### 5 · Production secret safety
-
-The agent is instructed to treat any command that might print secrets, tokens, or credentials (env dumps, log tails with auth headers, etc.) as requiring explicit confirmation in both modes — so sensitive values are never inadvertently echoed into the chat window.
+If you genuinely need one of these, the AI will:
+1. Tell you to take a backup first (and give you the exact command).
+2. Explain what will happen and why it's risky.
+3. Print the command in a code block for you to run yourself — manually, in your own terminal.
 
 ---
 
-## Repository layout
+## Session isolation
+
+Every conversation gets a fresh tmux session with a unique name:
+
+```bash
+# Created automatically on greeting
+work-1011-143000
+
+# You attach yourself
+tmux attach -t work-1011-143000
+```
+
+The AI never reuses sessions. It never attaches itself. Sessions from yesterday's incident don't bleed into today's work.
+
+---
+
+## Secret safety
+
+In production mode, any command that might print tokens, passwords, or credentials to the chat window requires explicit approval first — so your secrets don't end up in a chat log.
+
+---
+
+## How to use it
+
+1. Copy `.agents/` and `.gemini/` into the root of your project.
+2. Open it with an AI assistant that supports agent rules (Antigravity, Gemini CLI, etc.).
+3. Say hi. The AI creates a tmux session and asks: **main or production?**
+4. Start talking. Every command will be shown to you before it runs.
+
+No code. No dependencies. Just Markdown files.
+
+---
+
+## File layout
 
 ```
 .
 ├── .agents/
 │   └── rules/
-│       └── terminal-tmux.md        # Core rule: tmux sessions, env modes,
-│                                   # whitelist, dangerous-command ban
+│       └── terminal-tmux.md        # Sessions, env modes, whitelist, banned commands
 └── .gemini/
     └── rules/
-        ├── terminal_workflow.md    # Co-pilot workflow & destructive-op policy
+        ├── terminal_workflow.md    # Co-pilot behaviour & destructive-op policy
         └── command_approval.md     # Command display format & 1-click confirm UX
 ```
 
 ---
 
-## Getting started
+## Safe command whitelist (main mode)
 
-1. Copy the `.agents/` and `.gemini/` directories into the root of your project (or your `$HOME` for global effect).
-2. Open the project in an AI coding assistant that supports agent rules (e.g. Antigravity / Gemini CLI).
-3. Say **hi** — the agent will create a tmux session and ask which environment you're working in.
-4. Start issuing natural-language terminal commands. Every one will be shown to you for approval before execution.
-
-> **No code changes needed.** These are pure prompt-engineering rules in Markdown.
-
----
-
-## Safe command whitelist (main mode only)
-
-The following commands run **without** a confirmation prompt in `main` mode because they are read-only by nature:
+These run without asking. They're read-only by definition:
 
 ```
 ls  pwd  cd  cat  head  tail  less  echo  whoami  date  which  tree
@@ -130,20 +123,7 @@ git status  git log  git diff  git branch
 docker ps  docker logs  docker compose ps
 ```
 
-A whitelisted command loses its safe status the moment it is chained with a non-whitelisted or destructive command.
-
----
-
-## Security guarantees
-
-| Guarantee | How it is enforced |
-|-----------|-------------------|
-| No silent command execution | Every command requires at minimum a confirmation prompt before the agent touches the shell |
-| No destructive auto-execution | Hardcoded ban — cannot be overridden by user approval |
-| Production isolation | All whitelists disabled; every command individually gated |
-| Secret leakage prevention | Commands that may print credentials require explicit approval and are flagged |
-| Session isolation | Unique tmux session per conversation; no cross-session contamination |
-| Backup before destruction | Mandatory backup step must be surfaced before any destructive instruction is handed to the user |
+Chain any of these with a non-safe command and the whole thing needs approval.
 
 ---
 
